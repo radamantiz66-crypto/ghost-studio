@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ghost Studio — Maniquí Fantasma AI</title>
+  <style>
+    :root {
+      --bg: #f5f5f7;
+      --card: #ffffff;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --border: #e5e5ea;
+      --accent: #0071e3;
+      --success: #34c759;
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding-bottom: 40px;
+    }
+    header {
+      position: sticky; top: 0; z-index: 30;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 18px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-icon {
+      width: 34px; height: 34px; border-radius: 10px;
+      background: #1d1d1f; color: #fff;
+      display: flex; align-items: center; justify-content: center; font-size: 16px;
+    }
+    .brand-title { font-weight: 700; font-size: 16px; }
+    .brand-sub { font-size: 11px; color: var(--muted); display: block; }
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+    .api-btn {
+      border: 1px solid var(--border); background: #fff;
+      padding: 7px 12px; border-radius: 999px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .api-btn.ready { border-color: #34c759; background: #eafaf1; color: #1c7c35; }
+    .api-btn.missing { border-color: #ff9500; background: #fff5e6; color: #b26500; }
+    .reset-btn { border: none; background: none; color: var(--muted); font-size: 12px; cursor: pointer; }
+    .container {
+      max-width: 1100px; margin: 16px auto 0; padding: 0 14px;
+      display: grid; grid-template-columns: 1fr; gap: 16px;
+    }
+    @media (min-width: 880px) {
+      .container { grid-template-columns: 410px 1fr; align-items: start; }
+    }
+    .column { display: flex; flex-direction: column; gap: 16px; }
+    .card {
+      background: var(--card); border-radius: var(--radius);
+      padding: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+    }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .card-title { font-size: 15px; font-weight: 700; }
+    .card-badge {
+      font-size: 11px; font-weight: 600; color: var(--accent);
+      background: rgba(0,113,227,0.1); padding: 3px 9px; border-radius: 999px;
+    }
+    .card-desc { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+    .dropzone {
+      border: 1.5px dashed #c7c7cc; border-radius: 14px;
+      background: #fafafa; padding: 20px 14px; text-align: center; cursor: pointer;
+    }
+    .thumbs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+    .thumb-item {
+      position: relative; aspect-ratio: 1; border-radius: 10px;
+      overflow: hidden; border: 2px solid var(--border);
+    }
+    .thumb-item.primary { border-color: var(--accent); }
+    .thumb-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .thumb-actions {
+      position: absolute; top: 4px; left: 4px; right: 4px;
+      display: flex; justify-content: space-between;
+    }
+    .thumb-btn {
+      width: 22px; height: 22px; border-radius: 999px; border: none;
+      background: rgba(0,0,0,0.7); color: #fff; font-size: 11px; cursor: pointer;
+    }
+    .thumb-btn.star.active { background: var(--accent); }
+    .size-grid, .cat-grid, .bg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .size-option, .cat-btn, .bg-card {
+      border: 1.5px solid var(--border); border-radius: 12px;
+      padding: 9px 10px; background: #fff; text-align: left; cursor: pointer;
+    }
+    .size-option.active, .cat-btn.active, .bg-card.active {
+      border-color: var(--accent); background: rgba(0,113,227,0.05);
+    }
+    .size-top { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; }
+    .size-dims { font-size: 11px; color: var(--accent); font-weight: 600; margin-top: 2px; }
+    .size-sub { font-size: 10px; color: var(--muted); }
+    .label-small { font-size: 12px; font-weight: 600; color: var(--muted); margin: 12px 0 6px; display: block; }
+    .segmented {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      background: #ededf0; padding: 3px; border-radius: 10px;
+    }
+    .seg-btn {
+      border: none; background: transparent; padding: 7px 4px;
+      font-size: 12px; font-weight: 600; color: var(--muted); border-radius: 8px; cursor: pointer;
+    }
+    .seg-btn.active { background: #fff; color: var(--text); }
+    .cat-btn { font-size: 12px; font-weight: 600; }
+    .switch-list { display: flex; flex-direction: column; gap: 10px; }
+    .switch-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .switch-info strong { display: block; font-size: 13px; }
+    .switch-info span { font-size: 11px; color: var(--muted); }
+    .ios-switch { position: relative; width: 44px; height: 26px; flex-shrink: 0; }
+    .ios-switch input { opacity: 0; width: 0; height: 0; }
+    .slider-round {
+      position: absolute; cursor: pointer; inset: 0;
+      background: #e5e5ea; transition: 0.2s; border-radius: 999px;
+    }
+    .slider-round:before {
+      position: absolute; content: ""; height: 20px; width: 20px;
+      left: 3px; bottom: 3px; background: #fff; transition: 0.2s; border-radius: 50%;
+    }
+    .ios-switch input:checked + .slider-round { background: var(--success); }
+    .ios-switch input:checked + .slider-round:before { transform: translateX(18px); }
+    .bg-swatch {
+      height: 24px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.1);
+      margin-bottom: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px;
+    }
+    .bg-name { font-size: 12px; font-weight: 600; display: block; }
+    .bg-hex { font-size: 10px; color: var(--muted); }
+    .generate-btn {
+      width: 100%; border: none; border-radius: 999px;
+      background: var(--accent); color: #fff; font-size: 15px; font-weight: 700;
+      padding: 14px; cursor: pointer;
+    }
+    .generate-btn:disabled { opacity: 0.55; }
+    .viewer-topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .mode-tabs { display: inline-flex; background: #ededf0; padding: 3px; border-radius: 9px; }
+    .mode-tab {
+      border: none; background: transparent; padding: 6px 10px;
+      font-size: 12px; font-weight: 600; border-radius: 7px; cursor: pointer; color: var(--muted);
+    }
+    .mode-tab.active { background: #fff; color: var(--text); }
+    .canvas-stage {
+      width: 100%; background: #f2f2f7; border-radius: 14px;
+      border: 1px solid var(--border); overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      position: relative; min-height: 320px;
+    }
+    .empty-state { text-align: center; padding: 36px 20px; max-width: 300px; }
+    #clean-view-container { width: 100%; display: none; flex-direction: column; align-items: center; }
+    #final-clean-img { width: 100%; max-height: 620px; object-fit: contain; display: block; }
+    .gallery-hint {
+      background: rgba(0,113,227,0.08); color: #004c99;
+      font-size: 12px; padding: 10px 12px; border-radius: 10px; margin-top: 10px; width: 100%;
+    }
+    #compare-view-container { width: 100%; display: none; }
+    .compare-box { position: relative; width: 100%; overflow: hidden; background: #fff; }
+    .compare-box img { width: 100%; display: block; object-fit: contain; max-height: 580px; }
+    .compare-overlay {
+      position: absolute; inset: 0; overflow: hidden;
+      width: 50%; border-right: 2px solid var(--accent); background: #f5f5f7;
+    }
+    .compare-range { width: 100%; margin-top: 8px; }
+    .export-bar {
+      display: none; flex-wrap: wrap; justify-content: space-between;
+      align-items: center; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+    }
+    .fmt-btn {
+      border: 1px solid var(--border); background: #fff;
+      padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .fmt-btn.active { border-color: var(--accent); color: var(--accent); }
+    .download-btn {
+      border: none; background: #1d1d1f; color: #fff;
+      padding: 8px 14px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .diag-card {
+      display: none; margin-top: 12px; background: #f9f9fb;
+      border: 1px solid var(--border); border-radius: 12px; padding: 12px;
+    }
+    .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-top: 6px; }
+    .diag-item span { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; }
+    .loader-overlay {
+      position: absolute; inset: 0; background: rgba(255,255,255,0.92);
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      padding: 20px; text-align: center; z-index: 20;
+    }
+    .spinner {
+      width: 34px; height: 34px; border: 3px solid #e5e5ea;
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin-bottom: 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .toast {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      background: #1d1d1f; color: #fff; padding: 11px 16px; border-radius: 12px;
+      font-size: 12px; z-index: 100; max-width: 90vw; display: none;
+    }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: none; align-items: center; justify-content: center; padding: 16px; z-index: 90;
+    }
+    .modal { background: #fff; border-radius: 18px; padding: 20px; max-width: 400px; width: 100%; }
+    .modal input {
+      width: 100%; padding: 10px; border-radius: 10px;
+      border: 1.5px solid var(--border); font-size: 13px; margin: 12px 0; font-family: monospace;
+    }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .btn-secondary { border: 1px solid var(--border); background: #fff; padding: 8px 14px; border-radius: 9px; cursor: pointer; }
+    .btn-primary { border: none; background: var(--accent); color: #fff; padding: 8px 14px; border-radius: 9px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-icon">👕</div>
+      <div>
+        <div class="brand-title">Ghost Studio</div>
+        <span class="brand-sub">Maniquí Fantasma AI</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button id="open-api-modal" class="api-btn missing" type="button">🔑 Configurar API</button>
+      <button id="reset-all" class="reset-btn" type="button">Reiniciar</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="column">
+      <section class="card">
+        <div class="card-header">
+          <h2 class="card-title">1. Fotos de la prenda</h2>
+          <span id="photo-count" class="card-badge">0 fotos</span>
+        </div>
+        <p class="card-desc">Sube frente, espalda, cuello o detalles. Marca con ★ la principal.</p>
+        <div id="dropzone" class="dropzone">
+          <div style="font-size:22px;margin-bottom:4px;">📸</div>
+          <div style="font-size:13px;font-weight:600;">Toca aquí para subir o tomar fotos</div>
+          <div style="font-size:11px;color:var(--muted);">JPG, PNG o WEBP • Múltiples ángulos</div>
+          <input id="file-input" type="file" accept="image/*" multiple hidden />
+        </div>
+        <div id="thumbs-grid" class="thumbs-grid"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <h2 class="card-title">2. Formato y Tamaño</h2>
+          <span id="size-badge" class="card-badge">1080 × 1080 px</span>
+        </div>
+        <div class="size-grid">
+          <button type="button" class="size-option active" data-size="1:1" data-w="1080" data-h="1080">
+            <div class="size-top"><span>Catálogo</span><span>1:1</span></div>
+            <div class="size-dims">1080 × 1080 px</div>
+            <div class="size-sub">Tienda online</div>
+          </button>
+          <button type="button" class="size-option" data-size="4:5" data-w="1080" data-h="1350">
+            <div class="size-top"><span>Instagram</span><span>4:5</span></div>
+            <div class="size-dims">1080 × 1350 px</div>
+            <div class="size-sub">Feed vertical</div>
+          </button>
+          <button type="button" class="size-option" data-size="9:16" data-w="1080" data-h="1920">
+            <div class="size-top"><span>TikTok / Reels</span><span>9:16</span></div>
+            <div class="size-dims">1080 × 1920 px</div>
+            <div class="size-sub">Stories completas</div>
+          </button>
+          <button type="button" class="size-option" data-size="16:9" data-w="1920" data-h="1080">
+            <div class="size-top"><span>Banner Web</span><span>16:9</span></div>
+            <div class="size-dims">1920 × 1080 px</div>
+            <div class="size-sub">Horizontal</div>
+          </button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title" style="margin-bottom:8px;">3. Configuración de estudio</h2>
+        <span class="label-small">Vista de cámara</span>
+        <div class="segmented" id="view-segmented">
+          <button type="button" class="seg-btn active" data-view="Frontal">Frontal</button>
+          <button type="button" class="seg-btn" data-view="Trasera">Trasera</button>
+          <button type="button" class="seg-btn" data-view="Detalle 3/4">Detalle 3/4</button>
+        </div>
+
+        <span class="label-small">Categoría de prenda</span>
+        <div class="cat-grid" id="cat-grid">
+          <button type="button" class="cat-btn active" data-cat="Playera / Camisa">👕 Playera / Camisa</button>
+          <button type="button" class="cat-btn" data-cat="Hoodie / Sudadera">🧥 Hoodie / Sudadera</button>
+          <button type="button" class="cat-btn" data-cat="Chamarra / Abrigo">🧥 Chamarra / Abrigo</button>
+          <button type="button" class="cat-btn" data-cat="Pantalón / Pants">👖 Pantalón / Pants</button>
+          <button type="button" class="cat-btn" data-cat="Short / Bermuda">🩳 Short / Bermuda</button>
+          <button type="button" class="cat-btn" data-cat="Calzado / Gorra">👟 Calzado / Gorra</button>
+        </div>
+
+        <span class="label-small">Ajustes de IA</span>
+        <div class="switch-list">
+          <div class="switch-row">
+            <div class="switch-info"><strong>Relleno volumétrico 3D</strong><span>Silueta invisible natural</span></div>
+            <label class="ios-switch"><input type="checkbox" id="opt-volume" checked /><span class="slider-round"></span></label>
+          </div>
+          <div class="switch-row">
+            <div class="switch-info"><strong>Planchado digital</strong><span>Elimina arrugas de doblado</span></div>
+            <label class="ios-switch"><input type="checkbox" id="opt-iron" checked /><span class="slider-round"></span></label>
+          </div>
+          <div class="switch-row">
+            <div class="switch-info"><strong>Nitidez de tela</strong><span>Realce de tejido y costuras</span></div>
+            <label class="ios-switch"><input type="checkbox" id="opt-texture" checked /><span class="slider-round"></span></label>
+          </div>
+          <div class="switch-row">
+            <div class="switch-info"><strong>Preservar logotipos</strong><span>Fidelidad en estampados y etiquetas</span></div>
+            <label class="ios-switch"><input type="checkbox" id="opt-logos" checked /><span class="slider-round"></span></label>
+          </div>
+        </div>
+
+        <span class="label-small">Fondo de estudio</span>
+        <div class="bg-grid" id="bg-grid">
+          <button type="button" class="bg-card active" data-bg="#FFFFFF" data-bgname="Blanco Estudio Puro">
+            <div class="bg-swatch" style="background:#FFFFFF;"></div>
+            <span class="bg-name">Blanco Puro</span><span class="bg-hex">#FFFFFF</span>
+          </button>
+          <button type="button" class="bg-card" data-bg="#F2F2F7" data-bgname="Gris Minimalista">
+            <div class="bg-swatch" style="background:#F2F2F7;"></div>
+            <span class="bg-name">Gris Minimalista</span><span class="bg-hex">#F2F2F7</span>
+          </button>
+          <button type="button" class="bg-card" data-bg="#F7F4EF" data-bgname="Crema Editorial">
+            <div class="bg-swatch" style="background:#F7F4EF;"></div>
+            <span class="bg-name">Crema Editorial</span><span class="bg-hex">#F7F4EF</span>
+          </button>
+          <button type="button" class="bg-card" data-bg="#111111" data-bgname="Negro Mate">
+            <div class="bg-swatch" style="background:#111111;"></div>
+            <span class="bg-name">Negro Mate</span><span class="bg-hex">#111111</span>
+          </button>
+          <button type="button" class="bg-card" data-bg="#D8DCE0" data-bgname="Concreto Urbano">
+            <div class="bg-swatch" style="background:#D8DCE0;"></div>
+            <span class="bg-name">Concreto Urbano</span><span class="bg-hex">#D8DCE0</span>
+          </button>
+          <div class="bg-card" id="custom-bg-card">
+            <div class="bg-swatch" id="custom-swatch" style="background:#E3ECF8;">Elegir</div>
+            <span class="bg-name">Personalizado</span>
+            <input type="color" id="custom-color-input" value="#E3ECF8" style="width:100%;height:18px;border:none;background:none;" />
+          </div>
+        </div>
+      </section>
+
+      <button id="generate-btn" class="generate-btn" type="button">✨ Generar Maniquí Fantasma</button>
+    </div>
+
+    <div class="column">
+      <section class="card">
+        <div class="viewer-topbar">
+          <div>
+            <h2 class="card-title">Lienzo de Estudio</h2>
+            <span id="canvas-meta" style="font-size:11px;color:var(--muted);">1:1 • 1080 × 1080 px</span>
+          </div>
+          <div class="mode-tabs" id="viewer-modes" style="display:none;">
+            <button type="button" class="mode-tab active" data-mode="clean">Foto Limpia</button>
+            <button type="button" class="mode-tab" data-mode="compare">Antes / Después</button>
+          </div>
+        </div>
+
+        <div class="canvas-stage">
+          <div class="loader-overlay" id="loader">
+            <div class="spinner"></div>
+            <strong id="loader-title" style="font-size:14px;">Analizando prenda...</strong>
+            <span id="loader-sub" style="font-size:12px;color:var(--muted);margin-top:4px;">Fase 1 de 2</span>
+          </div>
+
+          <div class="empty-state" id="empty-state">
+            <div style="font-size:36px;margin-bottom:8px;">🧥</div>
+            <h3 style="font-size:15px;margin-bottom:4px;">Tu estudio está listo</h3>
+            <p style="font-size:12px;color:var(--muted);">Sube fotos de tu prenda, elige el tamaño y pulsa Generar Maniquí Fantasma.</p>
+          </div>
+
+          <div id="clean-view-container">
+            <img id="final-clean-img" alt="Resultado Maniquí Fantasma" />
+            <div class="gallery-hint">
+              📱 <strong>Guardar en galería:</strong> Mantén presionada la foto 2 segundos y elige <strong>"Descargar imagen"</strong> o <strong>"Guardar en Fotos"</strong>.
+            </div>
+          </div>
+
+          <div id="compare-view-container">
+            <div class="compare-box">
+              <img id="compare-after-img" alt="Después" />
+              <div class="compare-overlay" id="compare-overlay">
+                <img id="compare-before-img" alt="Antes" />
+              </div>
+            </div>
+            <input type="range" min="0" max="100" value="50" class="compare-range" id="compare-slider" />
+          </div>
+        </div>
+
+        <div class="export-bar" id="export-bar">
+          <div>
+            <button type="button" class="fmt-btn active" data-fmt="png">PNG</button>
+            <button type="button" class="fmt-btn" data-fmt="jpeg">JPG</button>
+          </div>
+          <button type="button" class="download-btn" id="direct-download-btn">⬇️ Descargar</button>
+        </div>
+
+        <div class="diag-card" id="diag-card">
+          <strong style="font-size:13px;">📋 Diagnóstico Técnico</strong>
+          <div class="diag-grid">
+            <div class="diag-item"><span>Corte</span><strong id="diag-cut">—</strong></div>
+            <div class="diag-item"><span>Color</span><strong id="diag-color">—</strong></div>
+            <div class="diag-item"><span>Tejido</span><strong id="diag-fabric">—</strong></div>
+            <div class="diag-item"><span>Detalles</span><strong id="diag-details">—</strong></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="modal-backdrop" id="api-modal">
+    <div class="modal">
+      <h3 style="font-size:16px;">🔑 Configurar API Key de Gemini</h3>
+      <p style="font-size:12px;color:var(--muted);margin-top:4px;">Pega tu clave gratuita de Google AI Studio (AIzaSy...).</p>
+      <input type="text" id="api-key-input" placeholder="AIzaSy..." autocomplete="off" />
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="close-api-modal">Cancelar</button>
+        <button type="button" class="btn-primary" id="save-api-key">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // PEGA AQUÍ TU API KEY DE GOOGLE AI STUDIO SI QUIERES DEJARLA FIJA:
+    const PRESET_API_KEY = "";
+
+    let memoryApiKey = PRESET_API_KEY.trim();
+
+    function getStoredApiKey() {
+      if (memoryApiKey) return memoryApiKey;
+      try {
+        const s = localStorage.getItem("ghost_studio_gemini_key");
+        if (s && s.trim()) { memoryApiKey = s.trim(); return memoryApiKey; }
+      } catch (e) {}
+      return "";
+    }
+
+    function setStoredApiKey(key) {
+      memoryApiKey = (key || "").trim();
+      try {
+        if (memoryApiKey) localStorage.setItem("ghost_studio_gemini_key", memoryApiKey);
+        else localStorage.removeItem("ghost_studio_gemini_key");
+      } catch (e) {}
+      updateApiButtonState();
+    }
+
+    const state = {
+      photos: [], aspectRatio: "1:1", width: 1080, height: 1080,
+      view: "Frontal", category: "Playera / Camisa",
+      bgColor: "#FFFFFF", bgName: "Blanco Estudio Puro",
+      exportFormat: "png", rawAiDataUrl: null, processedDataUrl: null
+    };
+
+    const apiBtn = document.getElementById("open-api-modal");
+    const apiModal = document.getElementById("api-modal");
+    const apiInput = document.getElementById("api-key-input");
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("file-input");
+    const thumbsGrid = document.getElementById("thumbs-grid");
+    const generateBtn = document.getElementById("generate-btn");
+    const loader = document.getElementById("loader");
+    const toastEl = document.getElementById("toast");
+
+    function showToast(msg, ms = 4500) {
+      toastEl.textContent = msg;
+      toastEl.style.display = "block";
+      clearTimeout(toastEl._t);
+      toastEl._t = setTimeout(() => { toastEl.style.display = "none"; }, ms);
+    }
+
+    function updateApiButtonState() {
+      if (getStoredApiKey()) {
+        apiBtn.className = "api-btn ready";
+        apiBtn.textContent = "✓ API Lista";
+      } else {
+        apiBtn.className = "api-btn missing";
+        apiBtn.textContent = "⚠️ Falta API";
+      }
+    }
+    updateApiButtonState();
+
+    apiBtn.onclick = () => { apiInput.value = getStoredApiKey(); apiModal.style.display = "flex"; };
+    document.getElementById("close-api-modal").onclick = () => { apiModal.style.display = "none"; };
+    document.getElementById("save-api-key").onclick = () => {
+      setStoredApiKey(apiInput.value);
+      apiModal.style.display = "none";
+      showToast("API Key guardada.");
+    };
+
+    dropzone.onclick = () => fileInput.click();
+    fileInput.onchange = (e) => {
+      Array.from(e.target.files).filter(f => f.type.startsWith("image/")).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = ev.target.result;
+          const parts = dataUrl.split(",");
+          state.photos.push({
+            id: Date.now() + Math.random().toString(36).slice(2),
+            dataUrl,
+            mimeType: parts[0].match(/:(.*?);/)[1] || "image/jpeg",
+            base64: parts[1],
+            primary: state.photos.length === 0
+          });
+          renderThumbs();
+        };
+        reader.readAsDataURL(file);
+      });
+      fileInput.value = "";
+    };
+
+    function renderThumbs() {
+      document.getElementById("photo-count").textContent = state.photos.length + " fotos";
+      thumbsGrid.innerHTML = "";
+      state.photos.forEach(p => {
+        const div = document.createElement("div");
+        div.className = "thumb-item " + (p.primary ? "primary" : "");
+        div.innerHTML = `<img src="${p.dataUrl}" /><div class="thumb-actions">
+          <button type="button" class="thumb-btn star ${p.primary ? "active" : ""}">★</button>
+          <button type="button" class="thumb-btn del">✕</button></div>`;
+        div.querySelector(".star").onclick = () => { state.photos.forEach(x => x.primary = x.id === p.id); renderThumbs(); };
+        div.querySelector(".del").onclick = () => {
+          state.photos = state.photos.filter(x => x.id !== p.id);
+          if (state.photos.length && !state.photos.some(x => x.primary)) state.photos[0].primary = true;
+          renderThumbs();
+        };
+        thumbsGrid.appendChild(div);
+      });
+    }
+
+    document.querySelectorAll(".size-option").forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll(".size-option").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        state.aspectRatio = btn.dataset.size;
+        state.width = +btn.dataset.w;
+        state.height = +btn.dataset.h;
+        const lbl = `${state.width} × ${state.height} px`;
+        document.getElementById("size-badge").textContent = lbl;
+        document.getElementById("canvas-meta").textContent = `${state.aspectRatio} • ${lbl}`;
+        if (state.rawAiDataUrl) composeFinalCanvas(state.rawAiDataUrl);
+      };
+    });
+
+    document.querySelectorAll("#view-segmented .seg-btn").forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll("#view-segmented .seg-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        state.view = btn.dataset.view;
+      };
+    });
+
+    document.querySelectorAll("#cat-grid .cat-btn").forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll("#cat-grid .cat-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        state.category = btn.dataset.cat;
+      };
+    });
+
+    document.querySelectorAll("#bg-grid .bg-card[data-bg]").forEach(card => {
+      card.onclick = () => {
+        document.querySelectorAll("#bg-grid .bg-card").forEach(c => c.classList.remove("active"));
+        card.classList.add("active");
+        state.bgColor = card.dataset.bg;
+        state.bgName = card.dataset.bgname;
+        if (state.rawAiDataUrl) composeFinalCanvas(state.rawAiDataUrl);
+      };
+    });
+
+    document.getElementById("custom-color-input").oninput = (e) => {
+      document.querySelectorAll("#bg-grid .bg-card").forEach(c => c.classList.remove("active"));
+      document.getElementById("custom-bg-card").classList.add("active");
+      state.bgColor = e.target.value.toUpperCase();
+      state.bgName = "Color personalizado " + state.bgColor;
+      document.getElementById("custom-swatch").style.background = state.bgColor;
+      if (state.rawAiDataUrl) composeFinalCanvas(state.rawAiDataUrl);
+    };
+
+    document.querySelectorAll("#viewer-modes .mode-tab").forEach(tab => {
+      tab.onclick = () => {
+        document.querySelectorAll("#viewer-modes .mode-tab").forEach(t => t.classList.remove("active"));
+        tab.classList.add("active");
+        const clean = tab.dataset.mode === "clean";
+        document.getElementById("clean-view-container").style.display = clean ? "flex" : "none";
+        document.getElementById("compare-view-container").style.display = clean ? "none" : "block";
+      };
+    });
+
+    document.getElementById("compare-slider").oninput = (e) => {
+      document.getElementById("compare-overlay").style.width = e.target.value + "%";
+    };
+
+    document.querySelectorAll(".fmt-btn").forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll(".fmt-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        state.exportFormat = btn.dataset.fmt;
+        if (state.rawAiDataUrl) composeFinalCanvas(state.rawAiDataUrl);
+      };
+    });
+
+    document.getElementById("direct-download-btn").onclick = () => {
+      if (!state.processedDataUrl) return;
+      const a = document.createElement("a");
+      a.href = state.processedDataUrl;
+      a.download = `ghost-studio-${Date.now()}.${state.exportFormat === "jpeg" ? "jpg" : "png"}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast("Si tu celular bloquea la descarga directa, mantén presionada la foto 2 segundos y toca 'Descargar imagen'.", 5500);
+    };
+
+    document.getElementById("reset-all").onclick = () => {
+      state.photos = []; state.rawAiDataUrl = null; state.processedDataUrl = null;
+      renderThumbs();
+      document.getElementById("empty-state").style.display = "block";
+      document.getElementById("clean-view-container").style.display = "none";
+      document.getElementById("compare-view-container").style.display = "none";
+      document.getElementById("viewer-modes").style.display = "none";
+      document.getElementById("export-bar").style.display = "none";
+      document.getElementById("diag-card").style.display = "none";
+    };
+
+    function composeFinalCanvas(aiDataUrl) {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = state.width; canvas.height = state.height;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = state.bgColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+        const url = canvas.toDataURL(state.exportFormat === "jpeg" ? "image/jpeg" : "image/png", 0.96);
+        state.processedDataUrl = url;
+        document.getElementById("final-clean-img").src = url;
+        document.getElementById("compare-after-img").src = url;
+        const p = state.photos.find(x => x.primary) || state.photos[0];
+        if (p) document.getElementById("compare-before-img").src = p.dataUrl;
+      };
+      img.src = aiDataUrl;
+    }
+
+    async function discoverModels(apiKey) {
+      const textDefaults = ["gemini-3.8-flash", "gemini-3-flash-preview", "gemini-2.5-flash"];
+      const imageDefaults = ["gemini-3.8-flash-image", "gemini-3.1-flash-image", "gemini-3-pro-image-preview", "gemini-2.5-flash-image"];
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+        if (!res.ok) return { textModels: textDefaults, imageModels: imageDefaults };
+        const data = await res.json();
+        const names = (data.models || [])
+          .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+          .map(m => m.name.replace("models/", ""));
+        const foundText = names.filter(n => n.includes("flash") && !n.includes("image") && !n.includes("audio") && !n.includes("tts")).reverse();
+        const foundImg = names.filter(n => n.includes("image")).reverse();
+        return {
+          textModels: [...new Set([...foundText, ...textDefaults])],
+          imageModels: [...new Set([...foundImg, ...imageDefaults])]
+        };
+      } catch (e) {
+        return { textModels: textDefaults, imageModels: imageDefaults };
+      }
+    }
+
+    generateBtn.onclick = async () => {
+      const apiKey = getStoredApiKey();
+      if (!apiKey) { apiModal.style.display = "flex"; showToast("Ingresa tu API Key primero."); return; }
+      if (!state.photos.length) { showToast("Sube al menos una foto de la prenda."); return; }
+
+      generateBtn.disabled = true;
+      loader.style.display = "flex";
+      document.getElementById("loader-title").textContent = "Analizando prenda...";
+      document.getElementById("loader-sub").textContent = "Fase 1 de 2: Diagnóstico técnico";
+
+      const ordered = [...state.photos.filter(p => p.primary), ...state.photos.filter(p => !p.primary)];
+      const imageParts = ordered.map(p => ({ inlineData: { mimeType: p.mimeType, data: p.base64 } }));
+
+      try {
+        const { textModels, imageModels } = await discoverModels(apiKey);
+
+        // Phase 1: Technical Diagnosis
+        let diagJson = null, lastDiagErr = null;
+        for (const tModel of textModels) {
+          try {
+            const diagRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${tModel}:generateContent?key=${encodeURIComponent(apiKey)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: `Analiza estas fotos de prenda (${state.category}) y devuelve SOLO JSON válido sin markdown con las claves: corte, color, textura, detalles.` }, ...imageParts] }],
+                  generationConfig: { responseMimeType: "application/json" }
+                })
+              }
+            );
+            const parsed = await diagRes.json();
+            if (diagRes.ok) { diagJson = parsed; break; }
+            lastDiagErr = parsed?.error?.message || `Error ${diagRes.status}`;
+          } catch (e) { lastDiagErr = e.message; }
+        }
+        if (!diagJson) throw new Error(lastDiagErr || "No se pudo analizar la prenda.");
+
+        let d = { corte: state.category, color: "Original", textura: "Natural", detalles: "Originales" };
+        try {
+          const rawTxt = diagJson.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
+          d = { ...d, ...JSON.parse(rawTxt) };
+        } catch (e) {}
+        document.getElementById("diag-cut").textContent = d.corte;
+        document.getElementById("diag-color").textContent = d.color;
+        document.getElementById("diag-fabric").textContent = d.textura;
+        document.getElementById("diag-details").textContent = d.detalles;
+        document.getElementById("diag-card").style.display = "block";
+
+        // Phase 2: Ghost Mannequin Image Render
+        document.getElementById("loader-title").textContent = "Renderizando Maniquí Fantasma...";
+        document.getElementById("loader-sub").textContent = `Fase 2 de 2: ${state.aspectRatio} sobre ${state.bgName}`;
+
+        const renderPrompt = `Create a commercial studio product photo using the invisible ghost mannequin technique (maniquí fantasma 3D) based strictly on the reference garment photos. Category: ${state.category} (${d.corte}). View: ${state.view}. Color & fabric: ${d.color}, ${d.textura}. Preserve exact details: ${d.detalles}. Solid uniform flat background in exact hex ${state.bgColor} (${state.bgName}) edge-to-edge with no floor line. Aspect ratio ${state.aspectRatio}. ${document.getElementById("opt-volume").checked ? "Reconstruct natural 3D body volume and inner collar/waistband depth." : ""} ${document.getElementById("opt-iron").checked ? "Digitally press wrinkles while keeping natural drape." : ""} ${document.getElementById("opt-texture").checked ? "Crisp fabric texture lighting." : ""} ${document.getElementById("opt-logos").checked ? "Preserve all logos, prints, and labels with 100% fidelity." : ""}`;
+
+        let genBase64 = null, genMime = "image/png", lastImgErr = null;
+        for (const model of imageModels) {
+          try {
+            const imgRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: renderPrompt }, ...imageParts] }],
+                  generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
+                })
+              }
+            );
+            const imgJson = await imgRes.json();
+            if (!imgRes.ok) { lastImgErr = imgJson?.error?.message || `Error ${imgRes.status}`; continue; }
+            const part = (imgJson.candidates?.[0]?.content?.parts || []).find(x => x.inlineData?.data);
+            if (part) { genBase64 = part.inlineData.data; genMime = part.inlineData.mimeType || "image/png"; break; }
+          } catch (e) { lastImgErr = e.message; }
+        }
+        if (!genBase64) throw new Error(lastImgErr || "No se generó la imagen.");
+
+        state.rawAiDataUrl = `data:${genMime};base64,${genBase64}`;
+        composeFinalCanvas(state.rawAiDataUrl);
+
+        document.getElementById("empty-state").style.display = "none";
+        document.getElementById("viewer-modes").style.display = "inline-flex";
+        document.getElementById("export-bar").style.display = "flex";
+        document.getElementById("clean-view-container").style.display = "flex";
+        document.getElementById("compare-view-container").style.display = "none";
+        showToast("¡Listo! Mantén presionada la foto para guardarla en tu galería.");
+      } catch (err) {
+        showToast("Error: " + err.message, 6000);
+      } finally {
+        loader.style.display = "none";
+        generateBtn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>
