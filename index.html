@@ -648,24 +648,38 @@
     }
 
     async function discoverModels(apiKey) {
-      const textDefaults = ["gemini-3.8-flash", "gemini-3-flash-preview", "gemini-2.5-flash"];
-      const imageDefaults = ["gemini-3.8-flash-image", "gemini-3.1-flash-image", "gemini-3-pro-image-preview", "gemini-2.5-flash-image"];
+      const textDefaults = ["gemini-2.5-flash", "gemini-3-flash-preview"];
+      const imageDefaults = ["gemini-2.5-flash-image", "gemini-3-pro-image-preview"];
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}&pageSize=1000`);
         if (!res.ok) return { textModels: textDefaults, imageModels: imageDefaults };
         const data = await res.json();
         const names = (data.models || [])
           .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
           .map(m => m.name.replace("models/", ""));
-        const foundText = names.filter(n => n.includes("flash") && !n.includes("image") && !n.includes("audio") && !n.includes("tts")).reverse();
-        const foundImg = names.filter(n => n.includes("image")).reverse();
+        const foundText = names.filter(n => n.includes("flash") && !n.includes("image") && !n.includes("audio") && !n.includes("tts") && !n.includes("live")).reverse();
+        const foundImg = names.filter(n => n.includes("image") && !n.includes("imagen")).reverse();
+        // Solo modelos que tu clave realmente tiene; si la lista no trae ninguno, usamos los conocidos.
         return {
-          textModels: [...new Set([...foundText, ...textDefaults])],
-          imageModels: [...new Set([...foundImg, ...imageDefaults])]
+          textModels: foundText.length ? foundText : textDefaults,
+          imageModels: foundImg.length ? foundImg : imageDefaults
         };
       } catch (e) {
         return { textModels: textDefaults, imageModels: imageDefaults };
       }
+    }
+
+    // Elige el error más útil (no "modelo no encontrado") y lo explica en español.
+    function explainErrors(errors, fallback) {
+      if (!errors.length) return fallback;
+      const useful = errors.find(e => e.status && e.status !== 404) || errors[0];
+      const msg = useful.message || "";
+      if (useful.status === 429 || /quota|RESOURCE_EXHAUSTED|limit: 0/i.test(msg))
+        return "Tu clave no tiene cuota para este modelo (" + useful.model + "). El plan gratuito de Gemini casi no incluye generación de imágenes: activa la facturación en Google AI Studio o espera a que se renueve el límite.";
+      if (useful.status === 400 && /API key/i.test(msg)) return "La API Key no es válida. Revísala en Configurar API.";
+      if (useful.status === 403) return "Tu clave no tiene permiso para " + useful.model + ". Revisa que la API de Gemini esté habilitada en tu proyecto.";
+      if (/location|region|not available in your country/i.test(msg)) return "Este modelo no está disponible en tu región (" + useful.model + ").";
+      return "(" + useful.model + ") " + msg;
     }
 
     generateBtn.onclick = async () => {
@@ -685,7 +699,7 @@
         const { textModels, imageModels } = await discoverModels(apiKey);
 
         // Phase 1: Technical Diagnosis
-        let diagJson = null, lastDiagErr = null;
+        let diagJson = null; const diagErrs = [];
         for (const tModel of textModels) {
           try {
             const diagRes = await fetch(
@@ -701,10 +715,10 @@
             );
             const parsed = await diagRes.json();
             if (diagRes.ok) { diagJson = parsed; break; }
-            lastDiagErr = parsed?.error?.message || `Error ${diagRes.status}`;
-          } catch (e) { lastDiagErr = e.message; }
+            diagErrs.push({ model: tModel, status: diagRes.status, message: parsed?.error?.message || `Error ${diagRes.status}` });
+          } catch (e) { diagErrs.push({ model: tModel, status: 0, message: e.message }); }
         }
-        if (!diagJson) throw new Error(lastDiagErr || "No se pudo analizar la prenda.");
+        if (!diagJson) throw new Error(explainErrors(diagErrs, "No se pudo analizar la prenda."));
 
         let d = { corte: state.category, color: "Original", textura: "Natural", detalles: "Originales" };
         try {
@@ -723,7 +737,7 @@
 
         const renderPrompt = `Create a commercial studio product photo using the invisible ghost mannequin technique (maniquí fantasma 3D) based strictly on the reference garment photos. Category: ${state.category} (${d.corte}). View: ${state.view}. Color & fabric: ${d.color}, ${d.textura}. Preserve exact details: ${d.detalles}. Solid uniform flat background in exact hex ${state.bgColor} (${state.bgName}) edge-to-edge with no floor line. Aspect ratio ${state.aspectRatio}. ${document.getElementById("opt-volume").checked ? "Reconstruct natural 3D body volume and inner collar/waistband depth." : ""} ${document.getElementById("opt-iron").checked ? "Digitally press wrinkles while keeping natural drape." : ""} ${document.getElementById("opt-texture").checked ? "Crisp fabric texture lighting." : ""} ${document.getElementById("opt-logos").checked ? "Preserve all logos, prints, and labels with 100% fidelity." : ""}`;
 
-        let genBase64 = null, genMime = "image/png", lastImgErr = null;
+        let genBase64 = null, genMime = "image/png"; const imgErrs = [];
         for (const model of imageModels) {
           try {
             const imgRes = await fetch(
@@ -738,12 +752,14 @@
               }
             );
             const imgJson = await imgRes.json();
-            if (!imgRes.ok) { lastImgErr = imgJson?.error?.message || `Error ${imgRes.status}`; continue; }
+            if (!imgRes.ok) { imgErrs.push({ model, status: imgRes.status, message: imgJson?.error?.message || `Error ${imgRes.status}` }); continue; }
             const part = (imgJson.candidates?.[0]?.content?.parts || []).find(x => x.inlineData?.data);
             if (part) { genBase64 = part.inlineData.data; genMime = part.inlineData.mimeType || "image/png"; break; }
-          } catch (e) { lastImgErr = e.message; }
+            const reason = imgJson.promptFeedback?.blockReason || imgJson.candidates?.[0]?.finishReason;
+            imgErrs.push({ model, status: 200, message: "El modelo respondió sin imagen" + (reason ? " (" + reason + ")" : "") + "." });
+          } catch (e) { imgErrs.push({ model, status: 0, message: e.message }); }
         }
-        if (!genBase64) throw new Error(lastImgErr || "No se generó la imagen.");
+        if (!genBase64) throw new Error(explainErrors(imgErrs, "No se generó la imagen."));
 
         state.rawAiDataUrl = `data:${genMime};base64,${genBase64}`;
         composeFinalCanvas(state.rawAiDataUrl);
@@ -755,7 +771,7 @@
         document.getElementById("compare-view-container").style.display = "none";
         showToast("¡Listo! Mantén presionada la foto para guardarla en tu galería.");
       } catch (err) {
-        showToast("Error: " + err.message, 6000);
+        showToast("Error: " + err.message, 12000);
       } finally {
         loader.style.display = "none";
         generateBtn.disabled = false;
