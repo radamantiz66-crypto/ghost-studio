@@ -420,16 +420,16 @@ Responde SOLO con un objeto JSON válido, sin texto antes ni después, con esta 
   let modelCache = null;
   async function pickModels() {
     if (modelCache) return modelCache;
-    const defaults = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"];
+    const defaults = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-lite-latest", "gemini-2.0-flash-lite"];
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}&pageSize=1000`);
-      if (!res.ok) return defaults;
+      if (!res.ok) return defaults.slice(0, 4);
       const names = ((await res.json()).models || [])
         .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
         .map(m => m.name.replace("models/", ""));
       const ok = defaults.filter(d => names.includes(d));
-      modelCache = ok.length ? ok : defaults;
-    } catch (e) { modelCache = defaults; }
+      modelCache = (ok.length ? ok : defaults).slice(0, 4);
+    } catch (e) { modelCache = defaults.slice(0, 4); }
     return modelCache;
   }
 
@@ -456,7 +456,7 @@ Responde SOLO con un objeto JSON válido, sin texto antes ni después, con esta 
 
   function explain(err) {
     const m = err.message || "";
-    if (err.status === 429 || /quota|RESOURCE_EXHAUSTED/i.test(m)) return "Se acabó la cuota gratuita de tu clave por ahora. Espera un rato (el límite es por minuto y por día) y vuelve a intentar.";
+    if (err.status === 429 || /quota|RESOURCE_EXHAUSTED/i.test(m)) return "Gemini no tiene cuota gratuita disponible ahora mismo para tu clave.";
     if (err.status === 400 && /API key/i.test(m)) return "La clave API no es válida. Revísala en Configurar API.";
     if (err.status === 403) return "Tu clave no tiene permiso para usar Gemini. Revisa la clave en Google AI Studio.";
     return "No se pudo completar: " + m;
@@ -468,76 +468,135 @@ Responde SOLO con un objeto JSON válido, sin texto antes ni después, con esta 
     $("research-status").hidden = !b; $("copy-status").hidden = !b;
   }
 
+  /* ---------- Copy de respaldo sin IA (cuando no hay cuota) ---------- */
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  function localCopy() {
+    const v = (id) => $(id).value.trim();
+    const brand = v("f-brand"), type = v("f-type") || "prenda", size = v("f-size"),
+          price = v("f-price"), cond = v("f-cond"), notes = v("f-notes");
+    const item = type + (brand ? " " + brand : "");
+    const hooks = {
+      casual: [`👀 ¿Ya viste esta ${item}? Está para llevársela HOY.`, `🔥 ¡Llegó una ${item} que no vas a querer dejar pasar!`, `✨ Si buscabas una ${item} que combine con todo, aquí está.`],
+      premium: [`✨ Estilo que se nota: ${item}.`, `🖤 Para quien sabe elegir: ${item}.`, `💎 Calidad que se ve y se siente: ${item}.`],
+      oferta: [`🚨 ¡OFERTA! ${item} a precio de bazar.`, `💥 Pieza única: ${item} a un precio que no se repite.`, `⏰ ¡Corre! ${item} disponible solo una vez.`]
+    }[state.tone];
+    const interest = [
+      `👕 ${type.charAt(0).toUpperCase() + type.slice(1)}${brand ? " de la marca " + brand : ""}${size ? ", talla " + size : ""}${cond ? ", " + cond.toLowerCase() : ""}.`,
+      notes ? `📌 ${notes.replace(/\.?$/, ".")}` : ""
+    ].filter(Boolean).join("\n");
+    const desire = {
+      casual: "😍 Se ve increíble con jeans, tenis o lo que ya tengas en el clóset. Cómoda, bonita y lista para estrenar en tu próxima salida con amigos, al trabajo o el fin de semana. De esas piezas que terminas usando una y otra vez porque siempre se ven bien.\n\n♻️ Comprar en bazar es ahorrar y darle una segunda vida a la ropa.",
+      premium: "🌟 Una pieza versátil que eleva cualquier outfit, del día a día a una salida especial. Buena confección, acabados cuidados y ese estilo que se nota sin necesidad de exagerar. Combínala con básicos neutros y deja que sea la protagonista.\n\n♻️ Moda con criterio: calidad que dura y una segunda vida para una gran prenda.",
+      oferta: "💸 Ropa de calidad a una fracción de lo que cuesta nueva en tienda. Ahorras, te ves bien y estrenas sin gastar de más. Ideal para renovar tu clóset o para regalar.\n\n♻️ Comprar en bazar es la forma más inteligente de vestir bien: buen precio y menos desperdicio."
+    }[state.tone];
+    const priceLine = price ? `💰 Precio: ${price}. Pieza única, cuando se va, se va.` : "💬 Pregunta por el precio, ¡te va a encantar!";
+    const action = pick(["📩 Mándame mensaje para apartarla. ¡Primero en escribir, primero en llevársela! 🛍️", "📲 Escríbeme por inbox y la apartamos hoy mismo. 🛍️", "👉 Comenta \"LA QUIERO\" o mándame mensaje para apartarla. 🛍️"]);
+    const copy = [pick(hooks), interest, desire, priceLine, action].filter(Boolean).join("\n\n");
+    const clean = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9ñÑ ]/g, "")
+      .split(/\s+/).filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join("");
+    const tags = [brand && clean(brand), clean(type), "BazarOnline", "RopaDeSegunda", "ModaSustentable", "Bazar", "OutfitDelDia", "Mexico",
+      state.tone === "oferta" ? "Oferta" : state.tone === "premium" ? "EstiloPremium" : "ModaCasual"].filter(Boolean).map(t => "#" + t);
+    return { prenda: type + (size ? " · talla " + size : ""), marca: brand || "No identificada", confianza_marca: brand ? "alta" : "baja", investigacion: [], copy, hashtags: [...new Set(tags)] };
+  }
+
+  function render(r, meta, mode) {
+    $("r-type").textContent = String(r.prenda || "—");
+    $("r-brand").textContent = String(r.marca || "No identificada");
+    const conf = ["alta", "media", "baja"].includes(r.confianza_marca) ? r.confianza_marca : "baja";
+    $("r-conf").className = "conf " + conf; $("r-conf").textContent = conf;
+    const ul = $("r-list"); ul.innerHTML = "";
+    (Array.isArray(r.investigacion) ? r.investigacion : []).slice(0, 5).forEach(t => {
+      const li = document.createElement("li"); li.textContent = String(t); ul.appendChild(li);
+    });
+    const chunks = (meta?.groundingChunks || []).map(c => c.web).filter(Boolean);
+    const sl = $("source-list"); sl.innerHTML = "";
+    const seen = new Set();
+    chunks.forEach(w => {
+      if (!w.uri || seen.has(w.title || w.uri) || seen.size >= 5) return; seen.add(w.title || w.uri);
+      const li = document.createElement("li"); const a = document.createElement("a");
+      a.href = w.uri; a.target = "_blank"; a.rel = "noopener"; a.textContent = w.title || w.uri;
+      li.appendChild(a); sl.appendChild(li);
+    });
+    $("sources").hidden = !sl.children.length;
+    $("research-note").textContent = {
+      search: "Gemini buscó en Google con las fotos y tus datos. Revisa la información antes de publicar.",
+      ai: "Esta vez la búsqueda en Google no estuvo disponible con tu clave; Gemini usó lo que ya sabe. Revisa la información antes de publicar.",
+      local: "Sin IA disponible: el copy se armó solo con tus datos. Llena marca, prenda, talla y precio para que quede más completo."
+    }[mode];
+    $("copy-box").value = String(r.copy || "").replace(/\\n/g, "\n").trim();
+    state.hashtags = (Array.isArray(r.hashtags) ? r.hashtags : [])
+      .map(h => "#" + String(h).replace(/^#+/, "").replace(/\s+/g, "")).filter(h => h.length > 1).slice(0, 12);
+    const tags = $("tags"); tags.innerHTML = "";
+    state.hashtags.forEach(h => { const s = document.createElement("span"); s.className = "tag"; s.textContent = h; tags.appendChild(s); });
+    wordCount();
+    $("research-badge").hidden = true; $("copy-badge").hidden = true;
+    if (window.matchMedia("(max-width: 879px)").matches) $("copy-box").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function retrySeconds(json) {
+    const d = (json?.error?.details || []).find(x => String(x["@type"] || "").includes("RetryInfo"));
+    const n = d ? parseFloat(d.retryDelay) : NaN;
+    return isNaN(n) ? null : Math.ceil(n);
+  }
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
   async function generate(variant = false) {
     if (state.busy) return;
-    if (!apiKey) { $("api-modal").hidden = false; showToast("Primero pega tu clave de Gemini."); return; }
     if (!state.photos.length && !$("f-type").value.trim() && !$("f-brand").value.trim()) {
       showToast("Sube al menos una foto o escribe qué prenda es."); return;
+    }
+    if (!apiKey) {
+      render(localCopy(), null, "local");
+      showToast("Copy armado sin IA. Configura tu clave de Gemini para investigar la prenda.", 5000);
+      return;
     }
     setBusy(true);
     $("research-error").hidden = true;
     $("research-status-text").textContent = "Analizando fotos y buscando en Google…";
     const parts = [{ text: buildPrompt(variant) }, ...state.photos.slice(0, 6).map(p => ({ inlineData: { mimeType: "image/jpeg", data: p.base64 } }))];
     const generationConfig = { temperature: variant ? 1.1 : 0.8 };
+    let out = null, mode = "ai"; const errs = [];
     try {
       const models = await pickModels();
-      let out = null, grounded = false; const errs = [];
-      for (const model of models) {
-        // Primero con búsqueda en Google; si la clave no la permite, sin búsqueda.
-        for (const withSearch of [true, false]) {
-          const body = { contents: [{ parts }], generationConfig };
-          if (withSearch) body.tools = [{ google_search: {} }];
-          const { res, json } = await callGemini(model, body);
-          if (res.ok) {
-            const cand = json.candidates?.[0];
-            const text = (cand?.content?.parts || []).map(x => x.text || "").join("");
-            if (text) { out = { text, meta: cand.groundingMetadata }; grounded = withSearch; break; }
-            errs.push({ status: 200, message: "Respuesta vacía (" + (cand?.finishReason || json.promptFeedback?.blockReason || "sin motivo") + ")." });
-          } else {
-            errs.push({ status: res.status, message: json?.error?.message || "Error " + res.status });
-            if (res.status === 404) break;
+      // 1) primer modelo con búsqueda en Google; 2) cada modelo sin búsqueda (otros modelos tienen cuota aparte).
+      const attempts = [{ model: models[0], search: true }, ...models.map(m => ({ model: m, search: false }))];
+      let waited = false;
+      for (let i = 0; i < attempts.length && !out; i++) {
+        const { model, search } = attempts[i];
+        $("research-status-text").textContent = search ? "Analizando fotos y buscando en Google…" : `Escribiendo con ${model}…`;
+        const body = { contents: [{ parts }], generationConfig };
+        if (search) body.tools = [{ google_search: {} }];
+        const { res, json } = await callGemini(model, body);
+        if (res.ok) {
+          const cand = json.candidates?.[0];
+          const text = (cand?.content?.parts || []).map(x => x.text || "").join("");
+          if (text) {
+            try { out = { r: parseJson(text), meta: cand.groundingMetadata }; mode = search ? "search" : "ai"; }
+            catch (e) { errs.push({ status: 200, message: e.message }); }
+          } else errs.push({ status: 200, message: "Respuesta vacía." });
+        } else {
+          errs.push({ status: res.status, message: json?.error?.message || "Error " + res.status });
+          const wait = retrySeconds(json);
+          if (res.status === 429 && !waited && wait && wait <= 20) {
+            waited = true;
+            $("research-status-text").textContent = `Límite por minuto de Gemini: espero ${wait} s y reintento…`;
+            await sleep(wait * 1000); i--;
           }
         }
-        if (out) break;
       }
-      if (!out) throw (errs.find(e => e.status && e.status !== 404) || errs[0] || { message: "sin respuesta" });
+    } catch (e) { errs.push({ status: 0, message: e.message }); }
 
-      const r = parseJson(out.text);
-      $("r-type").textContent = String(r.prenda || "—");
-      $("r-brand").textContent = String(r.marca || "No identificada");
-      const conf = ["alta", "media", "baja"].includes(r.confianza_marca) ? r.confianza_marca : "baja";
-      $("r-conf").className = "conf " + conf; $("r-conf").textContent = conf;
-      const ul = $("r-list"); ul.innerHTML = "";
-      (Array.isArray(r.investigacion) ? r.investigacion : []).slice(0, 5).forEach(t => {
-        const li = document.createElement("li"); li.textContent = String(t); ul.appendChild(li);
-      });
-      // Fuentes de Google
-      const chunks = (out.meta?.groundingChunks || []).map(c => c.web).filter(Boolean);
-      const sl = $("source-list"); sl.innerHTML = "";
-      const seen = new Set();
-      chunks.forEach(w => {
-        if (!w.uri || seen.has(w.title || w.uri) || seen.size >= 5) return; seen.add(w.title || w.uri);
-        const li = document.createElement("li"); const a = document.createElement("a");
-        a.href = w.uri; a.target = "_blank"; a.rel = "noopener"; a.textContent = w.title || w.uri;
-        li.appendChild(a); sl.appendChild(li);
-      });
-      $("sources").hidden = !sl.children.length;
-      $("research-note").textContent = grounded
-        ? "Gemini buscó en Google con las fotos y tus datos. Revisa la información antes de publicar."
-        : "Esta vez la búsqueda en Google no estuvo disponible con tu clave; Gemini usó lo que ya sabe. Revisa la información antes de publicar.";
-
-      $("copy-box").value = String(r.copy || "").replace(/\\n/g, "\n").trim();
-      state.hashtags = (Array.isArray(r.hashtags) ? r.hashtags : [])
-        .map(h => "#" + String(h).replace(/^#+/, "").replace(/\s+/g, "")).filter(h => h.length > 1).slice(0, 12);
-      const tags = $("tags"); tags.innerHTML = "";
-      state.hashtags.forEach(h => { const s = document.createElement("span"); s.className = "tag"; s.textContent = h; tags.appendChild(s); });
-      wordCount();
-      $("research-badge").hidden = true; $("copy-badge").hidden = true;
-      if (window.matchMedia("(max-width: 879px)").matches) $("copy-box").scrollIntoView({ behavior: "smooth", block: "center" });
-    } catch (e) {
-      const box = $("research-error"); box.textContent = explain(e); box.hidden = false;
-      box.scrollIntoView({ behavior: "smooth", block: "center" });
-    } finally { setBusy(false); }
+    if (out) {
+      render(out.r, out.meta, mode);
+    } else {
+      // Sin IA: igual entregamos un copy armado con los datos del formulario.
+      render(localCopy(), null, "local");
+      const err = errs.find(e => e.status && e.status !== 404) || errs[0] || { message: "sin respuesta" };
+      const box = $("research-error");
+      box.textContent = explain(err) + " Mientras tanto te armé un copy con tus datos; puedes publicarlo o volver a intentar más tarde.";
+      box.hidden = false;
+    }
+    setBusy(false);
   }
   $("generate-btn").onclick = () => generate(false);
   $("regen-btn").onclick = () => generate(true);
